@@ -50,7 +50,7 @@ _HAS_MCI = hasattr(ctypes, "windll")
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION          = "1.1.0"
+VERSION          = "1.1.1"
 APP_NAME         = "GimmeDat"
 
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/ridhakaiden"

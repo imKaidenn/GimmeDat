@@ -47,7 +47,31 @@ Paste, drop, or one-tap a link → it grabs the video.
 
 Grab the latest **`GimmeDat.exe`** from the [**Releases**](../../releases) page and double-click it. Windows only. No Python needed.
 
-> First launch takes a few seconds to unpack. Windows SmartScreen may warn on an unsigned exe — click *More info → Run anyway*.
+---
+
+## 🛡️ "Windows protected your PC" — is this safe?
+
+**Yes.** That warning ("**Windows protected your PC** · Unknown publisher") shows up for **every** unsigned `.exe` on the internet — including from huge well-known indie devs. It is *not* a "this app is suspicious" signal; it's a "this app hasn't paid Microsoft for a code-signing certificate" signal. The reasons GimmeDat is unsigned right now: a signing cert costs ~$200–700/year, which we'd rather not pass on to users of a free-forever tool.
+
+**How to run it safely:**
+1. Click **More info** on the warning
+2. Click **Run anyway**
+
+**How to verify the file is the *real* one** (recommended — protects against tampered copies floating around):
+1. Right-click the downloaded `GimmeDat.exe` → **Properties** → **Details**. You should see:
+   - **Product name:** GimmeDat
+   - **Copyright:** Copyright (C) 2026 Kaiden. Licensed under GPL-3.0.
+   - **Company:** Kaiden
+   - **File version:** matches the release
+2. Compare its **SHA256** to the one published on the Release page. In PowerShell:
+   ```powershell
+   Get-FileHash GimmeDat.exe -Algorithm SHA256
+   ```
+   The hash must match exactly. If it differs by even one character, **don't run it** — that copy was modified by someone else.
+
+**Why no warning will eventually appear:** Microsoft SmartScreen builds reputation per-publisher per-binary over downloads. Once enough people have downloaded GimmeDat without flagging it, the warning will quietly stop showing up. (Code-signing speeds this up but doesn't skip it — only an *EV* cert removes the prompt instantly, and those run several hundred dollars per year.)
+
+**The source is right here on GitHub.** Anyone can read every line — that's the whole point of open source. If you're security-conscious, build the exe yourself with `BUILD.md`; the hash will match what's published in the release.
 
 ---
 
