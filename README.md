@@ -21,7 +21,8 @@ Paste, drop, or one-tap a link → it grabs the video.
 ## ✨ Features
 
 - 🎬 **12+ platforms** — YouTube, TikTok, Instagram, Pinterest, Twitter/X, Facebook, Reddit, SoundCloud, Vimeo, Twitch, Dailymotion, Bilibili — plus 1000+ more.
-- 📁 **Pick your save folder** — change where videos save anytime; remembered between sessions.
+- 🖼 **Images too** — paste any image link (Imgur, Reddit, Twitter/X, Pinterest, Instagram CDN, Unsplash…) and GimmeDat grabs the **highest-quality** version, bypassing hotlink-blocking sites.
+- 📁 **Pick your save folder** — change where videos save anytime; remembered between sessions. Files save flat — no per-platform subfolders.
 - 🎯 **Smart quality detection** — probes the link and lights up **only the resolutions that actually exist** (4K → 240p + MP3), each with a **file-size estimate**. No fake upscaling.
 - 📥 **Three ways to load a link** — paste, **drag & drop** a link/tab onto the window, or **⚡ paste & grab** (one-tap clipboard → download).
 - 🖼️ **Rich preview** — thumbnail, title, channel, and duration before you grab.
@@ -36,9 +37,9 @@ Paste, drop, or one-tap a link → it grabs the video.
 
 ## 📸 Screenshots
 
-| Idle | After pasting a link | Resized / responsive |
-|:---:|:---:|:---:|
-| <img src="screenshots/idle.png" width="270"> | <img src="screenshots/probed.png" width="270"> | <img src="screenshots/resized.png" width="270"> |
+| Idle | Video link probed | Image link detected | Resized / responsive |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/idle.png" width="200"> | <img src="screenshots/probed.png" width="200"> | <img src="screenshots/image.png" width="200"> | <img src="screenshots/resized.png" width="200"> |
 
 ---
 

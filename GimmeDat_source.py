@@ -1,5 +1,5 @@
 """
-GimmeDat v1.0.1 — a free-forever desktop video downloader.
+GimmeDat v1.1.0 — a free-forever desktop video + image downloader.
 Backend : open-source media tools + bundled ffmpeg (imageio-ffmpeg)
 UI      : customtkinter responsive GRID layout, with a tkinter Canvas glitch
           layer behind and a pixel-cat mascot.
@@ -50,7 +50,7 @@ _HAS_MCI = hasattr(ctypes, "windll")
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION          = "1.0.2"
+VERSION          = "1.1.0"
 APP_NAME         = "GimmeDat"
 
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/ridhakaiden"
@@ -144,9 +144,70 @@ def detect_platform(url: str):
     return None
 
 
+# ── Image detection / URL upgrade for full-quality downloads ────────────────
+IMAGE_EXT_RX = re.compile(r"\.(jpe?g|png|webp|gif|bmp|tiff?|avif|heic)(\?|$|#)", re.I)
+IMAGE_HOST_RX = re.compile(
+    r"(i\.imgur\.com|imgur\.com/[a-z0-9]+(?:\.\w+)?$|"
+    r"i\.redd\.it|preview\.redd\.it|external-preview\.redd\.it|"
+    r"pbs\.twimg\.com|"
+    r"cdninstagram\.com|fbcdn\.net|"
+    r"pinimg\.com|"
+    r"flickr\.com|staticflickr\.com|"
+    r"i\.ibb\.co|ibb\.co|"
+    r"unsplash\.com/photos|images\.unsplash\.com|"
+    r"giphy\.com)", re.I)
+
+
+def is_image_url(url: str) -> bool:
+    """Direct image URL, or known image-CDN URL."""
+    if not url:
+        return False
+    if IMAGE_EXT_RX.search(url):
+        return True
+    if IMAGE_HOST_RX.search(url):
+        return True
+    return False
+
+
+def upgrade_image_url(url: str) -> str:
+    """Best-effort tweaks to get the highest-resolution variant of an image URL.
+    Each rule is a known per-CDN trick — silently no-ops if the rule doesn't match."""
+    u = url
+    # Twitter / X: ?name=small|medium|large → ?name=orig
+    u = re.sub(r"([?&])name=(small|medium|large|360x360|240x240|120x120)",
+               r"\1name=orig", u)
+    # Twitter: ?format=jpg → keep, append &name=orig if missing
+    if "pbs.twimg.com" in u and "name=" not in u and "?" in u:
+        u += "&name=orig"
+    elif "pbs.twimg.com" in u and "name=" not in u:
+        u += "?name=orig"
+    # Reddit: preview.redd.it/xyz.jpg?... → i.redd.it/xyz.jpg
+    u = re.sub(r"https?://preview\.redd\.it/", "https://i.redd.it/", u)
+    u = re.sub(r"https?://external-preview\.redd\.it/", "https://i.redd.it/", u)
+    # Reddit: strip resizing query string
+    if "i.redd.it" in u and "?" in u:
+        u = u.split("?")[0]
+    # Imgur: thumbnail suffixes (b, m, l, h, t, s, g) → full size
+    u = re.sub(r"(i\.imgur\.com/[A-Za-z0-9]+)[bmlhts](\.\w+)", r"\1\2", u)
+    # Pinterest: 236x / 474x / 736x size segments → originals
+    u = re.sub(r"(pinimg\.com/)\d+x/", r"\1originals/", u)
+    # Instagram thumbs: ?stp=...&_nc_cat=... usually already largest CDN copy; no safe rewrite
+    return u
+
+
+def image_filename_from_url(url: str) -> str:
+    """Clean, safe filename derived from the URL (no garbage query params)."""
+    last = url.split("?")[0].split("#")[0].rstrip("/").split("/")[-1] or "gimmedat_image"
+    last = re.sub(r"[^\w\-.]+", "_", last)[:80]
+    if not IMAGE_EXT_RX.search(last):
+        last += ".jpg"
+    return last
+
+
 def find_urls(text: str):
     raw = re.findall(r"https?://[^\s<>{}\"']+", text or "")
-    return [u for u in raw if detect_platform(u)]
+    # Accept supported platforms AND direct/CDN image URLs
+    return [u for u in raw if detect_platform(u) or is_image_url(u)]
 
 
 def default_download_root() -> Path:
@@ -154,6 +215,21 @@ def default_download_root() -> Path:
     root = Path.home() / "Downloads" / "GimmeDat Downloads"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def cleanup_legacy_subdirs(root: Path):
+    """Remove EMPTY platform subfolders left over from versions <1.0.1.
+    Only deletes folders that are (a) named after a known platform AND (b) empty,
+    so we can never wipe user files by mistake."""
+    if not root or not root.exists():
+        return
+    valid = {info["label"] for info in PLATFORMS.values()}
+    for child in root.iterdir():
+        try:
+            if child.is_dir() and child.name in valid and not any(child.iterdir()):
+                child.rmdir()
+        except Exception:
+            pass
 
 
 def human_size(n):
@@ -423,6 +499,7 @@ class GimmeDatApp(*_Base):
         # state
         self.stats = Stats()
         self._dl_root = self._resolve_download_root()
+        cleanup_legacy_subdirs(self._dl_root)            # tidy old per-platform folders
         self._probe = None
         self._probe_after = None
         self._quality = "1080p"
@@ -793,23 +870,38 @@ class GimmeDatApp(*_Base):
     def _on_url_change(self, event=None):
         self._mark_action()
         url = self.url_entry.get().strip()
-        plat = detect_platform(url)
-        self._set_detected(plat)
         if self._probe_after:
             self.after_cancel(self._probe_after)
         self._probe = None
         if not url:
+            self._set_detected(None)
             self._hide_quality(reset_empty=True)
-        if plat and url.startswith("http"):
+            return
+        # Images bypass the quality probe — they have no resolutions to pick
+        if is_image_url(url):
+            self._set_detected("image")
+            self._hide_quality(reset_empty=False)
+            self.empty_lbl.configure(text="🖼  image detected — hit GRAB IT to save full quality")
+            self.empty_lbl.grid()
+            return
+        plat = detect_platform(url)
+        self._set_detected(plat)
+        if not plat:
+            self._hide_quality(reset_empty=True)
+            self.empty_lbl.configure(text="◇  paste, drop, or ⚡ a link to begin")
+        elif url.startswith("http"):
             self._probe_after = self.after(600, lambda: self._do_probe(url))
 
     def _set_detected(self, plat):
         for w in self._det_icon_holder.winfo_children():
             w.destroy()
-        if plat:
+        if plat == "image":
+            self.detected_lbl.configure(text="detected: image — best quality", text_color=NEON)
+        elif plat:
             self._det_icon = make_icon(self._det_icon_holder, plat, 22, bg=BG)
             self._det_icon.pack()
-            self.detected_lbl.configure(text=f"detected: {PLATFORMS[plat]['label']}")
+            self.detected_lbl.configure(text=f"detected: {PLATFORMS[plat]['label']}",
+                                        text_color=NEON)
         else:
             self.detected_lbl.configure(text="")
 
@@ -990,6 +1082,10 @@ class GimmeDatApp(*_Base):
         if not url:
             self._set_status("yo, paste a link first", ERR)
             return
+        # Direct image URLs don't need a platform — handle them separately
+        if is_image_url(url):
+            self._enqueue(url, auto=False)
+            return
         if not detect_platform(url):
             self._set_status("that link isn't supported", ERR)
             return
@@ -1035,25 +1131,36 @@ class GimmeDatApp(*_Base):
             self.detected_lbl.configure(text="📋 link in clipboard — Ctrl+V to load")
 
     def _enqueue(self, url, auto, quiet=False):
-        plat = detect_platform(url)
-        if not plat:
-            return
-        self._queue.append((url, plat, auto))
+        # Images: queue as ("image", url, auto). Videos: ("video", url, auto).
+        if is_image_url(url):
+            self._queue.append(("image", url, auto))
+        else:
+            plat = detect_platform(url)
+            if not plat:
+                return
+            self._queue.append(("video", url, plat, auto))
         self._render_queue()
         self._process_queue()
 
     def _process_queue(self):
         if self._busy or not self._queue:
             return
-        url, plat, auto = self._queue.pop(0)
+        item = self._queue.pop(0)
         self._render_queue()
         self._busy = True
         self.grab_btn.configure(state="disabled", text="GRABBING…")
         self.mascot.set_state("excited")
         self.pbar.set(0)
-        self._set_status(f"connecting to {PLATFORMS[plat]['label']}…", NEON)
-        threading.Thread(target=self._download_thread, args=(url, plat, auto),
-                         daemon=True).start()
+        if item[0] == "image":
+            _, url, auto = item
+            self._set_status("grabbing image…", NEON)
+            threading.Thread(target=self._image_download_thread,
+                             args=(url,), daemon=True).start()
+        else:
+            _, url, plat, auto = item
+            self._set_status(f"connecting to {PLATFORMS[plat]['label']}…", NEON)
+            threading.Thread(target=self._download_thread,
+                             args=(url, plat, auto), daemon=True).start()
 
     def _render_queue(self):
         n = len(self._queue)
@@ -1131,6 +1238,93 @@ class GimmeDatApp(*_Base):
                 return name
         return "MP3" if has_audio else "720p"
 
+    # ─────────────────── IMAGE DOWNLOAD ───────────────────
+    def _image_download_thread(self, url):
+        """Fetch a single image at the highest available quality. Bypasses
+        hotlink protection via browser-like headers."""
+        out_dir = self._dl_root
+        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            up_url = upgrade_image_url(url)
+            self.after(0, self._set_status, "fetching image…", NEON)
+            req = urllib.request.Request(up_url, headers={
+                "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                               "AppleWebKit/537.36 (KHTML, like Gecko) "
+                               "Chrome/120.0.0.0 Safari/537.36"),
+                "Accept": ("image/avif,image/webp,image/apng,image/svg+xml,"
+                           "image/*,*/*;q=0.8"),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.google.com/",
+            })
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                total = int(resp.headers.get("Content-Length") or 0)
+                read = 0
+                chunks = []
+                while True:
+                    buf = resp.read(64 * 1024)
+                    if not buf:
+                        break
+                    chunks.append(buf)
+                    read += len(buf)
+                    if total:
+                        frac = read / total
+                        self.after(0, self.pbar.set, frac)
+                        self.after(0, self._set_detail,
+                                   f"{int(frac*100)}%   ·   {human_size(read)} / {human_size(total)}")
+                data = b"".join(chunks)
+
+            if not data:
+                raise RuntimeError("empty response")
+            if "html" in ctype or data[:50].lstrip().lower().startswith(b"<!doctype"):
+                raise RuntimeError("got a webpage, not an image")
+
+            # extension preference: from URL → Content-Type → default jpg
+            name = image_filename_from_url(up_url)
+            if ctype.startswith("image/"):
+                ext_from_type = ctype.split("/")[1].split(";")[0].strip()
+                ext_from_type = {"jpeg": "jpg"}.get(ext_from_type, ext_from_type)
+                if ext_from_type and not name.lower().endswith("." + ext_from_type):
+                    name = re.sub(r"\.[^.]+$", "", name) + "." + ext_from_type
+
+            # avoid clobbering existing files
+            path = out_dir / name
+            stem, suffix = path.stem, path.suffix
+            i = 1
+            while path.exists():
+                path = out_dir / f"{stem}_{i}{suffix}"
+                i += 1
+            path.write_bytes(data)
+            size = len(data)
+
+            self._last_file = str(path)
+            self.after(0, self._on_image_done, name, str(path), size)
+        except urllib.error.HTTPError as e:
+            msg = f"HTTP {e.code} — site blocked the request" if e.code in (401, 403) \
+                  else f"HTTP {e.code} — not found" if e.code == 404 \
+                  else f"HTTP {e.code} error"
+            self.after(0, self._on_error, msg)
+        except urllib.error.URLError:
+            self.after(0, self._on_error, "Network hiccup — try again")
+        except Exception as e:
+            self.after(0, self._on_error, f"Couldn't grab image: {str(e)[:120]}")
+
+    def _on_image_done(self, title, path, size):
+        self._busy = False
+        self.pbar.set(1)
+        self.mascot.set_state("happy", hold=22)
+        self._set_status("done fr ✓  (image saved)", OK)
+        self._set_detail(path)
+        self.grab_btn.configure(state="normal", text="GRAB IT")
+        # Use a synthetic "platform" entry for images so the last-grab card displays cleanly
+        last = {"title": title, "platform": "image", "quality": "IMG",
+                "size": human_size(size), "path": path}
+        self.stats.add(size, last)
+        self._render_last()
+        self._refresh_stats()
+        self._show_toast("image saved ✓", OK)
+        self.after(300, self._process_queue)
+
     def _yt_hook(self, d):
         if d["status"] == "downloading":
             pct = d.get("_percent_str", "").strip().replace("%", "")
@@ -1199,11 +1393,19 @@ class GimmeDatApp(*_Base):
             return
         for w in self.last_icon_holder.winfo_children():
             w.destroy()
-        self._last_icon = make_icon(self.last_icon_holder, last.get("platform", ""), 22)
+        plat_key = last.get("platform", "")
+        if plat_key == "image":
+            # synthetic platform — render a tiny "IMG" badge instead of an icon
+            self._last_icon = ctk.CTkLabel(self.last_icon_holder, text="🖼",
+                                           font=(F_MONO, 14), text_color=NEON)
+        else:
+            self._last_icon = make_icon(self.last_icon_holder, plat_key, 22)
         self._last_icon.pack()
         self.last_title.configure(text=last["title"], text_color=TEXT)
-        meta = "  ·  ".join(x for x in (PLATFORMS.get(last["platform"], {}).get("label"),
-                                        last.get("quality"), last.get("size")) if x)
+        plat_label = "Image" if plat_key == "image" else \
+                     PLATFORMS.get(plat_key, {}).get("label")
+        meta = "  ·  ".join(x for x in (plat_label, last.get("quality"),
+                                        last.get("size")) if x)
         self.last_meta.configure(text=meta)
 
     # ─────────────────── toast / help ───────────────────
