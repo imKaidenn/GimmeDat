@@ -1,0 +1,9 @@
+<svg width="800" height="200" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="200" rx="24" fill="#0d0b18"/>
+  <rect x="24" y="44" width="112" height="112" rx="28" fill="#7c3aed"/>
+  <rect x="42" y="62" width="76" height="76" rx="18" fill="#4c1d95"/>
+  <polygon points="58,80 106,100 58,120" fill="#c4b5fd"/>
+  <text x="156" y="122" font-family="Arial Black, sans-serif" font-size="72" font-weight="900" fill="#f2efff" letter-spacing="-2">Gimme</text>
+  <text x="582" y="122" font-family="Arial Black, sans-serif" font-size="72" font-weight="900" fill="#a78bfa" letter-spacing="-2">Dat</text>
+  <text x="156" y="152" font-family="Arial, sans-serif" font-size="14" fill="#5a5480" letter-spacing="3">SNATCH ANY VIDEO · HD · NO CAP</text>
+</svg>

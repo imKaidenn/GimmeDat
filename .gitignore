@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyInstaller build output (the .exe ships via GitHub Releases, not the repo)
+build/
+dist/
+*.spec
+
+# App data
+.gimmedat/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.log
