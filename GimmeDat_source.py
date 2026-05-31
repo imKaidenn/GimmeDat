@@ -50,7 +50,7 @@ _HAS_MCI = hasattr(ctypes, "windll")
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION          = "1.0.1"
+VERSION          = "1.0.2"
 APP_NAME         = "GimmeDat"
 
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/ridhakaiden"
@@ -604,8 +604,16 @@ class GimmeDatApp(*_Base):
         self.info_dur = ctk.CTkLabel(self.info_card, text="", font=(F_MONO, 11, "bold"),
                                      text_color=NEON, anchor="w")
         self.info_dur.grid(row=2, column=1, sticky="w", padx=(0, 12), pady=(0, 12))
-        self.info_title.bind("<Configure>",
-                             lambda e: self.info_title.configure(wraplength=max(120, e.width - 10)))
+        # Bind on the PARENT card, not the label itself — reconfiguring a label
+        # inside its own <Configure> handler recurses infinitely. Also debounce
+        # by checking the width actually changed before re-applying.
+        self._info_title_wrap = 0
+        def _wrap_title(e):
+            target = max(120, e.width - 200)   # leave room for the thumbnail
+            if abs(target - self._info_title_wrap) > 4:
+                self._info_title_wrap = target
+                self.info_title.configure(wraplength=target)
+        self.info_card.bind("<Configure>", _wrap_title)
         self.info_card.grid_remove()
 
         # empty state (shown when no probe)
