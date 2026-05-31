@@ -7,7 +7,7 @@
 ```bash
 pip install -r requirements.txt
 ```
-(That's: `yt-dlp customtkinter pillow imageio-ffmpeg tkinterdnd2 pyinstaller`)
+(See `requirements.txt` for the full list — `customtkinter pillow imageio-ffmpeg tkinterdnd2 pyinstaller` + video-extraction backend.)
 
 ## 3. Run from source (optional)
 ```bash
@@ -52,6 +52,6 @@ pyinstaller --onefile --noconsole --name GimmeDat ^
 
 ## Notes
 - **Close GimmeDat.exe before rebuilding**, or you'll get *"Access is denied"*.
-- yt-dlp ages fast. If a site breaks: `pip install -U yt-dlp`, then rebuild.
+- Video sites change often. If one breaks: `pip install -U -r requirements.txt`, then rebuild.
 - Build from a **non-admin** terminal (PyInstaller warns otherwise).
 - The harmless `Library not found: ...DLL` warnings during build are standard Windows system DLLs — ignore them.

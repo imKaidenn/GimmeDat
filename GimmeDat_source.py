@@ -1,6 +1,6 @@
 """
-GimmeDat v1.0 — a free-forever desktop video downloader.
-Backend : yt-dlp + bundled ffmpeg (imageio-ffmpeg)
+GimmeDat v1.0.1 — a free-forever desktop video downloader.
+Backend : open-source media tools + bundled ffmpeg (imageio-ffmpeg)
 UI      : customtkinter responsive GRID layout, with a tkinter Canvas glitch
           layer behind and a pixel-cat mascot.
 
@@ -50,7 +50,7 @@ _HAS_MCI = hasattr(ctypes, "windll")
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION          = "1.0"
+VERSION          = "1.0.1"
 APP_NAME         = "GimmeDat"
 
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/ridhakaiden"
@@ -149,10 +149,10 @@ def find_urls(text: str):
     return [u for u in raw if detect_platform(u)]
 
 
-def get_download_root() -> Path:
+def default_download_root() -> Path:
+    """Default save location — a single flat folder, no per-platform subdirs."""
     root = Path.home() / "Downloads" / "GimmeDat Downloads"
-    for info in PLATFORMS.values():
-        (root / info["label"]).mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
     return root
 
 
@@ -241,6 +241,7 @@ class Stats:
         self.bytes = 0
         self.last = None
         self.geometry = None
+        self.download_dir = None       # user's chosen save folder (None = default)
         self._load()
 
     def _load(self):
@@ -250,6 +251,7 @@ class Stats:
             self.bytes = d.get("bytes", 0)
             self.last = d.get("last")
             self.geometry = d.get("geometry")
+            self.download_dir = d.get("download_dir")
         except Exception:
             pass
 
@@ -258,7 +260,8 @@ class Stats:
             STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
             STATS_FILE.write_text(json.dumps(
                 {"count": self.count, "bytes": self.bytes,
-                 "last": self.last, "geometry": self.geometry}, indent=2),
+                 "last": self.last, "geometry": self.geometry,
+                 "download_dir": self.download_dir}, indent=2),
                 encoding="utf-8")
         except Exception:
             pass
@@ -418,8 +421,8 @@ class GimmeDatApp(*_Base):
         self._set_icon()
 
         # state
-        self._dl_root = get_download_root()
         self.stats = Stats()
+        self._dl_root = self._resolve_download_root()
         self._probe = None
         self._probe_after = None
         self._quality = "1080p"
@@ -466,6 +469,41 @@ class GimmeDatApp(*_Base):
                 self.iconbitmap(str(ico))
             except Exception:
                 pass
+
+    # ── save location ──
+    def _resolve_download_root(self) -> Path:
+        """Use the user's chosen folder if set + still exists, else the default."""
+        if self.stats.download_dir:
+            p = Path(self.stats.download_dir)
+            if p.exists() or self._safe_mkdir(p):
+                return p
+        return default_download_root()
+
+    @staticmethod
+    def _safe_mkdir(p: Path) -> bool:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return True
+        except Exception:
+            return False
+
+    def _pick_download_dir(self):
+        """Folder-picker dialog → persists choice, updates UI label."""
+        from tkinter import filedialog
+        chosen = filedialog.askdirectory(
+            title="Choose where GimmeDat saves videos",
+            initialdir=str(self._dl_root))
+        if not chosen:
+            return
+        p = Path(chosen)
+        if not self._safe_mkdir(p):
+            self._show_toast("can't write there", ERR)
+            return
+        self._dl_root = p
+        self.stats.download_dir = str(p)
+        self.stats.save()
+        self._refresh_folder_label()
+        self._show_toast("save folder updated ✓", OK)
 
     # ─────────────────── LAYOUT ───────────────────
     def _build_layout(self):
@@ -659,17 +697,39 @@ class GimmeDatApp(*_Base):
         self.stats_b = ctk.CTkLabel(st, text="", font=(F_MONO, 12, "bold"), text_color=NEON)
         self.stats_b.pack(anchor="w", padx=14, pady=(0, 12))
 
+        # save-folder card
+        sf = self._card(sb)
+        sf.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        sf.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(sf, text="SAVE TO", font=(F_MONO, 9, "bold"),
+                     text_color=FAINT).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 2))
+        self.folder_lbl = ctk.CTkLabel(sf, text="", font=(F_MONO, 10),
+                                       text_color=TEXT, anchor="w",
+                                       wraplength=240, justify="left")
+        self.folder_lbl.grid(row=1, column=0, sticky="ew", padx=14)
+        ctk.CTkButton(sf, text="📁 change folder", height=32, fg_color=CARD2,
+                      hover_color=GLOW, text_color=NEON, font=(F_MONO, 11, "bold"),
+                      corner_radius=8, command=self._pick_download_dir
+                      ).grid(row=2, column=0, sticky="ew", padx=14, pady=(8, 12))
+
         ctk.CTkButton(sb, text="♥ buy me a coffee", height=40, fg_color=PURPLE,
                       hover_color=VIOLET, font=(F_MONO, 12, "bold"), corner_radius=10,
                       command=lambda: webbrowser.open(BUYMEACOFFEE_URL)
-                      ).grid(row=2, column=0, sticky="ew", pady=(8, 0))
+                      ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
         ctk.CTkButton(sb, text="PayPal", height=38, fg_color=CARD2, hover_color=GLOW,
                       text_color=NEON, font=(F_MONO, 12, "bold"), corner_radius=10,
                       command=lambda: webbrowser.open(PAYPAL_URL)
-                      ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+                      ).grid(row=4, column=0, sticky="ew", pady=(8, 0))
         ctk.CTkLabel(sb, text="click the cat 5× 👀", font=(F_MONO, 9),
-                     text_color=FAINT).grid(row=4, column=0, pady=(10, 0))
+                     text_color=FAINT).grid(row=5, column=0, pady=(10, 0))
         self._refresh_stats()
+        self._refresh_folder_label()
+
+    def _refresh_folder_label(self):
+        p = str(self._dl_root)
+        if len(p) > 40:
+            p = "…" + p[-39:]
+        self.folder_lbl.configure(text=p)
 
     # ── footer ──
     def _build_footer(self):
@@ -1015,7 +1075,9 @@ class GimmeDatApp(*_Base):
         return opts
 
     def _download_thread(self, url, plat, auto):
-        out_dir = self._dl_root / PLATFORMS[plat]["label"]
+        # save straight into the user's chosen folder, no platform subdirs
+        out_dir = self._dl_root
+        out_dir.mkdir(parents=True, exist_ok=True)
         ffmpeg = get_ffmpeg()
         self._last_file = None
         try:

@@ -4,7 +4,7 @@
 
 ### snatch any video · hd · free forever · no cap
 
-A clean **cyberpunk-glitch** desktop video downloader for 12+ platforms (and 1000+ sites via yt-dlp).
+A clean **cyberpunk-glitch** desktop video downloader for 12+ platforms (and 1000+ sites under the hood).
 Paste, drop, or one-tap a link → it grabs the video.
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-7c3aed?style=for-the-badge)
@@ -20,7 +20,8 @@ Paste, drop, or one-tap a link → it grabs the video.
 
 ## ✨ Features
 
-- 🎬 **12+ platforms** — YouTube, TikTok, Instagram, Pinterest, Twitter/X, Facebook, Reddit, SoundCloud, Vimeo, Twitch, Dailymotion, Bilibili — plus 1000+ more via yt-dlp.
+- 🎬 **12+ platforms** — YouTube, TikTok, Instagram, Pinterest, Twitter/X, Facebook, Reddit, SoundCloud, Vimeo, Twitch, Dailymotion, Bilibili — plus 1000+ more.
+- 📁 **Pick your save folder** — change where videos save anytime; remembered between sessions.
 - 🎯 **Smart quality detection** — probes the link and lights up **only the resolutions that actually exist** (4K → 240p + MP3), each with a **file-size estimate**. No fake upscaling.
 - 📥 **Three ways to load a link** — paste, **drag & drop** a link/tab onto the window, or **⚡ paste & grab** (one-tap clipboard → download).
 - 🖼️ **Rich preview** — thumbnail, title, channel, and duration before you grab.
@@ -75,7 +76,7 @@ Output → `dist\GimmeDat.exe`. See [`BUILD.md`](BUILD.md) for the full guide.
 ## ⚙️ How it works
 
 1. **Detect** the platform from the URL (regex).
-2. **Probe** with yt-dlp (no download) → title, channel, duration, thumbnail, real stream heights + size estimates.
+2. **Probe** the URL (no download) → title, channel, duration, thumbnail, real stream heights + size estimates.
 3. **Select format** — `bestvideo[height<=h] + bestaudio` merged to MP4, or `bestaudio` → MP3.
 4. **Merge** with bundled **ffmpeg** (this is why HD works — without it you'd be capped at 360p).
 5. **Save** into `~/Downloads/GimmeDat Downloads/<Platform>/` and update stats.
@@ -86,7 +87,7 @@ Output → `dist\GimmeDat.exe`. See [`BUILD.md`](BUILD.md) for the full guide.
 
 ## 🧰 Tech stack
 
-`yt-dlp` · `customtkinter` · `tkinter.Canvas` · `Pillow` · `imageio-ffmpeg` · `tkinterdnd2` · `ctypes` (winmm/MCI for music) · `pyinstaller`
+`customtkinter` · `tkinter.Canvas` · `Pillow` · `imageio-ffmpeg` · `tkinterdnd2` · `ctypes` (winmm/MCI for music) · `pyinstaller` + open-source video-extraction libraries
 
 ---
 
