@@ -8,7 +8,7 @@ A clean cyberpunk desktop video & image downloader for 12+ platforms (and 1000+ 
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-7c3aed?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-22d3ee?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.1.1-8b5cf6?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.2.0-8b5cf6?style=for-the-badge)
 
 <img src="screenshots/probed.png" width="780" alt="GimmeDat">
 

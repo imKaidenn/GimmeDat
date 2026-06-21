@@ -1,5 +1,5 @@
 """
-GimmeDat v1.1.0 — a free-forever desktop video + image downloader.
+GimmeDat v1.2.0 — a free-forever desktop video + image downloader.
 Backend : open-source media tools + bundled ffmpeg (imageio-ffmpeg)
 UI      : customtkinter responsive GRID layout, with a tkinter Canvas glitch
           layer behind and a pixel-cat mascot.
@@ -55,7 +55,7 @@ class DownloadCanceled(Exception):
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-VERSION          = "1.1.1"
+VERSION          = "1.2.0"
 APP_NAME         = "GimmeDat"
 
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/ridhakaiden"

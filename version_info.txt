@@ -4,8 +4,8 @@
 
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 1, 0),
-    prodvers=(1, 1, 1, 0),
+    filevers=(1, 2, 0, 0),
+    prodvers=(1, 2, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
           [
             StringStruct(u'CompanyName',      u'Kaiden'),
             StringStruct(u'FileDescription',  u'GimmeDat — Video & Image Downloader'),
-            StringStruct(u'FileVersion',      u'1.1.1.0'),
+            StringStruct(u'FileVersion',      u'1.2.0.0'),
             StringStruct(u'InternalName',     u'GimmeDat'),
             StringStruct(u'LegalCopyright',   u'Copyright (C) 2026 Kaiden. Licensed under GPL-3.0.'),
             StringStruct(u'OriginalFilename', u'GimmeDat.exe'),
             StringStruct(u'ProductName',      u'GimmeDat'),
-            StringStruct(u'ProductVersion',   u'1.1.1'),
+            StringStruct(u'ProductVersion',   u'1.2.0'),
             StringStruct(u'Comments',         u'Free-forever desktop video and image downloader. https://github.com/imKaidenn/GimmeDat'),
           ]
         )
