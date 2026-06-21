@@ -46,6 +46,11 @@ except Exception:
 import ctypes
 _HAS_MCI = hasattr(ctypes, "windll")
 
+
+class DownloadCanceled(Exception):
+    """Raised from a progress hook to abort an in-flight download on user request."""
+    pass
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
@@ -510,6 +515,8 @@ class GimmeDatApp(*_Base):
         self._chips = []
         self._chip_reveal = 0
         self._busy = False
+        self._cancel = threading.Event()   # set to abort the in-flight download
+        self._updating = False             # yt-dlp self-update in progress
         self._queue = []
         self._last_file = None
         self._konami = []
@@ -668,6 +675,13 @@ class GimmeDatApp(*_Base):
                                        text_color=NEON, border_width=1, border_color=GLOW,
                                        font=(F_MONO, 12, "bold"), command=self._paste_and_grab)
         self.paste_btn.grid(row=0, column=1)
+        # cancel — hidden until a download is actually running
+        self.cancel_btn = ctk.CTkButton(br, text="✕ cancel", width=110, height=46,
+                                        corner_radius=12, fg_color=CARD2, hover_color=GLOW,
+                                        text_color=ERR, border_width=1, border_color=ERR,
+                                        font=(F_MONO, 12, "bold"), command=self._cancel_clicked)
+        self.cancel_btn.grid(row=0, column=2, padx=(8, 0))
+        self.cancel_btn.grid_remove()
 
         # info card (hidden until probe)
         self.info_card = self._card(m)
@@ -801,16 +815,23 @@ class GimmeDatApp(*_Base):
                       corner_radius=8, command=self._pick_download_dir
                       ).grid(row=2, column=0, sticky="ew", padx=14, pady=(8, 12))
 
+        # keep the bundled extractor fresh — YouTube etc. break it over time
+        self.update_btn = ctk.CTkButton(sb, text="⟳ update yt-dlp", height=34, fg_color=CARD2,
+                                        hover_color=GLOW, text_color=NEON,
+                                        font=(F_MONO, 11, "bold"), corner_radius=10,
+                                        command=self._update_ytdlp)
+        self.update_btn.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+
         ctk.CTkButton(sb, text="♥ buy me a coffee", height=40, fg_color=PURPLE,
                       hover_color=VIOLET, font=(F_MONO, 12, "bold"), corner_radius=10,
                       command=lambda: webbrowser.open(BUYMEACOFFEE_URL)
-                      ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+                      ).grid(row=4, column=0, sticky="ew", pady=(8, 0))
         ctk.CTkButton(sb, text="PayPal", height=38, fg_color=CARD2, hover_color=GLOW,
                       text_color=NEON, font=(F_MONO, 12, "bold"), corner_radius=10,
                       command=lambda: webbrowser.open(PAYPAL_URL)
-                      ).grid(row=4, column=0, sticky="ew", pady=(8, 0))
+                      ).grid(row=5, column=0, sticky="ew", pady=(8, 0))
         ctk.CTkLabel(sb, text="click the cat 5× 👀", font=(F_MONO, 9),
-                     text_color=FAINT).grid(row=5, column=0, pady=(10, 0))
+                     text_color=FAINT).grid(row=6, column=0, pady=(10, 0))
         self._refresh_stats()
         self._refresh_folder_label()
 
@@ -1156,7 +1177,9 @@ class GimmeDatApp(*_Base):
         item = self._queue.pop(0)
         self._render_queue()
         self._busy = True
+        self._cancel.clear()
         self.grab_btn.configure(state="disabled", text="GRABBING…")
+        self._show_cancel()
         self.mascot.set_state("excited")
         self.pbar.set(0)
         if item[0] == "image":
@@ -1221,6 +1244,8 @@ class GimmeDatApp(*_Base):
                 has_audio = any(f.get("acodec") not in (None, "none") for f in info.get("formats", []))
                 max_h = max(heights) if heights else None
                 title = (info.get("title") or "unknown")[:70]
+            if self._cancel.is_set():
+                raise DownloadCanceled()
             quality = self._choose_quality(auto, max_h, has_audio)
             self.after(0, self._set_status, f"snatching: {title}", NEON)
             opts = self._build_opts(out_dir, ffmpeg, quality)
@@ -1238,7 +1263,12 @@ class GimmeDatApp(*_Base):
             size = os.path.getsize(self._last_file) if self._last_file and os.path.exists(self._last_file) else 0
             self.after(0, self._on_done, title, plat, quality, size)
         except Exception as e:
-            self.after(0, self._on_error, clean_error(str(e)))
+            # A user cancel surfaces here too (yt-dlp may wrap the hook exception),
+            # so let the flag — not the exception type — decide how we report it.
+            if self._cancel.is_set():
+                self.after(0, self._on_canceled)
+            else:
+                self.after(0, self._on_error, clean_error(str(e)))
 
     def _choose_quality(self, auto, max_h, has_audio):
         if not auto:
@@ -1278,6 +1308,8 @@ class GimmeDatApp(*_Base):
                 read = 0
                 chunks = []
                 while True:
+                    if self._cancel.is_set():
+                        raise DownloadCanceled()
                     buf = resp.read(64 * 1024)
                     if not buf:
                         break
@@ -1315,6 +1347,8 @@ class GimmeDatApp(*_Base):
 
             self._last_file = str(path)
             self.after(0, self._on_image_done, name, str(path), size)
+        except DownloadCanceled:
+            self.after(0, self._on_canceled)
         except urllib.error.HTTPError as e:
             msg = f"HTTP {e.code} — site blocked the request" if e.code in (401, 403) \
                   else f"HTTP {e.code} — not found" if e.code == 404 \
@@ -1332,6 +1366,7 @@ class GimmeDatApp(*_Base):
         self._set_status("done fr ✓  (image saved)", OK)
         self._set_detail(path)
         self.grab_btn.configure(state="normal", text="GRAB IT")
+        self._hide_cancel()
         # Use a synthetic "platform" entry for images so the last-grab card displays cleanly
         last = {"title": title, "platform": "image", "quality": "IMG",
                 "size": human_size(size), "path": path}
@@ -1342,6 +1377,8 @@ class GimmeDatApp(*_Base):
         self.after(300, self._process_queue)
 
     def _yt_hook(self, d):
+        if self._cancel.is_set():
+            raise DownloadCanceled()
         if d["status"] == "downloading":
             pct = d.get("_percent_str", "").strip().replace("%", "")
             spd = d.get("_speed_str", "").strip()
@@ -1376,6 +1413,7 @@ class GimmeDatApp(*_Base):
         self._set_status("done fr ✓", OK)
         self._set_detail(self._last_file or "")
         self.grab_btn.configure(state="normal", text="GRAB IT")
+        self._hide_cancel()
         self.stats.add(size, {"title": title, "platform": plat, "quality": quality,
                               "size": human_size(size), "path": self._last_file})
         self._render_last()
@@ -1389,8 +1427,92 @@ class GimmeDatApp(*_Base):
         self._set_status(msg, ERR)
         self.pbar.set(0)
         self.grab_btn.configure(state="normal", text="GRAB IT")
+        self._hide_cancel()
         self._show_toast(msg, ERR)
         self.after(300, self._process_queue)
+
+    # ─────────────────── cancel ───────────────────
+    def _show_cancel(self):
+        self.cancel_btn.configure(state="normal", text="✕ cancel")
+        self.cancel_btn.grid()
+
+    def _hide_cancel(self):
+        self.cancel_btn.grid_remove()
+
+    def _cancel_clicked(self):
+        if not self._busy:
+            return
+        self._cancel.set()                 # the running thread checks this and bails
+        self._queue.clear()                # cancel means stop — drop anything pending
+        self._render_queue()
+        self._set_status("canceling…", MUTED)
+        self.cancel_btn.configure(state="disabled", text="canceling…")
+
+    def _on_canceled(self):
+        self._busy = False
+        self.mascot.set_state("sad", hold=18)
+        self._set_status("canceled", MUTED)
+        self._set_detail("")
+        self.pbar.set(0)
+        self.grab_btn.configure(state="normal", text="GRAB IT")
+        self._hide_cancel()
+        self._cleanup_partial()
+        self._show_toast("download canceled", MUTED)
+        self.after(300, self._process_queue)
+
+    def _cleanup_partial(self):
+        """Best-effort removal of yt-dlp's leftover temp files after a cancel.
+        Only one download runs at a time, so clearing these suffixes is safe."""
+        try:
+            for f in self._dl_root.glob("*"):
+                n = f.name
+                if n.endswith((".part", ".ytdl")) or ".part-Frag" in n:
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # ─────────────────── yt-dlp self-update ───────────────────
+    def _update_ytdlp(self):
+        if self._updating:
+            return
+        self._updating = True
+        self.update_btn.configure(state="disabled", text="updating…")
+        self._show_toast("updating yt-dlp…", NEON)
+        threading.Thread(target=self._update_ytdlp_thread, daemon=True).start()
+
+    def _update_ytdlp_thread(self):
+        import subprocess
+        ok, msg = False, ""
+        try:
+            if getattr(sys, "frozen", False):
+                # frozen .exe bundles yt-dlp — can't pip-upgrade it in place
+                msg = "packaged build — grab a new release to update"
+            else:
+                proc = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                    capture_output=True, text=True, timeout=180,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                out = (proc.stdout or "") + (proc.stderr or "")
+                if proc.returncode == 0:
+                    ok = True
+                    msg = ("already up to date ✓"
+                           if "Successfully installed" not in out
+                           else "updated! restart to use it ✓")
+                else:
+                    msg = "update failed — check your connection"
+        except subprocess.TimeoutExpired:
+            msg = "update timed out — try again"
+        except Exception as e:
+            msg = f"couldn't update: {str(e)[:80]}"
+        self.after(0, self._update_ytdlp_done, ok, msg)
+
+    def _update_ytdlp_done(self, ok, msg):
+        self._updating = False
+        self.update_btn.configure(state="normal", text="⟳ update yt-dlp")
+        self._show_toast(msg, OK if ok else ERR)
 
     # ─────────────────── small setters ───────────────────
     def _set_status(self, msg, color=TEXT):
