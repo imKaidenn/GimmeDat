@@ -187,8 +187,11 @@ def upgrade_image_url(url: str) -> str:
     # Reddit: strip resizing query string
     if "i.redd.it" in u and "?" in u:
         u = u.split("?")[0]
-    # Imgur: thumbnail suffixes (b, m, l, h, t, s, g) → full size
-    u = re.sub(r"(i\.imgur\.com/[A-Za-z0-9]+)[bmlhts](\.\w+)", r"\1\2", u)
+    # Imgur: thumbnail suffixes (b, m, l, h, t, s) → full size. Only strip the
+    # suffix when the BASE id is exactly 5 or 7 chars (the real imgur id lengths),
+    # so we never chop a legit id that just happens to end in one of those letters.
+    u = re.sub(r"(i\.imgur\.com/[A-Za-z0-9]{5}(?:[A-Za-z0-9]{2})?)[bmlhts](\.\w+)",
+               r"\1\2", u)
     # Pinterest: 236x / 474x / 736x size segments → originals
     u = re.sub(r"(pinimg\.com/)\d+x/", r"\1originals/", u)
     # Instagram thumbs: ?stp=...&_nc_cat=... usually already largest CDN copy; no safe rewrite
@@ -254,7 +257,8 @@ def fmt_duration(s):
 def clean_error(msg: str) -> str:
     m = (msg or "").lower()
     if "private" in m:                            return "This video is private 🔒"
-    if "sign in" in m or "age" in m:              return "Age-restricted — needs a login 🔞"
+    if "sign in" in m or "age-restricted" in m or "age restricted" in m:
+        return "Age-restricted — needs a login 🔞"
     if "geo" in m or "your country" in m or "not available in" in m:
         return "Region-locked in your country 🌍"
     if "removed" in m or "unavailable" in m or "deleted" in m or "does not exist" in m:
@@ -918,7 +922,7 @@ class GimmeDatApp(*_Base):
     def _probe_thread(self, url):
         try:
             with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
-                                   "skip_download": True}) as ydl:
+                                   "skip_download": True, "noplaylist": True}) as ydl:
                 info = ydl.extract_info(url, download=False)
             heights, has_audio, by_h, best_audio = [], False, {}, 0
             for f in info.get("formats", []):
@@ -948,7 +952,7 @@ class GimmeDatApp(*_Base):
                 "max_h": max_h, "has_audio": has_audio, "sizes": sizes,
                 "plat": detect_platform(url),
             }
-            self.after(0, self._on_probe_done)
+            self.after(0, self._on_probe_done, url)
         except Exception as e:
             self.after(0, self._probe_failed, clean_error(str(e)))
 
@@ -957,7 +961,11 @@ class GimmeDatApp(*_Base):
         self._hide_quality(reset_empty=True)
         self._set_status(msg, ERR)
 
-    def _on_probe_done(self):
+    def _on_probe_done(self, url):
+        # Drop a probe that completed after the user already changed the link —
+        # otherwise we'd paint a stale title/thumbnail over the new URL.
+        if url != self.url_entry.get().strip():
+            return
         p = self._probe
         if not p:
             return
@@ -1170,7 +1178,7 @@ class GimmeDatApp(*_Base):
         v = dict(QUALITY_TIERS)[quality]
         opts = {"outtmpl": str(out_dir / "%(title).80s.%(ext)s"),
                 "restrictfilenames": True, "windowsfilenames": True,
-                "quiet": True, "no_warnings": True,
+                "quiet": True, "no_warnings": True, "noplaylist": True,
                 "progress_hooks": [self._yt_hook],
                 "postprocessor_hooks": [self._pp_hook]}
         if ffmpeg:
@@ -1196,16 +1204,24 @@ class GimmeDatApp(*_Base):
         ffmpeg = get_ffmpeg()
         self._last_file = None
         try:
-            self.after(0, self._set_status, "fetching stream…", NEON)
-            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
-                                   "skip_download": True}) as ydl:
-                info = ydl.extract_info(url, download=False)
-            heights = [f["height"] for f in info.get("formats", [])
-                       if f.get("vcodec") not in (None, "none") and f.get("height")]
-            has_audio = any(f.get("acodec") not in (None, "none") for f in info.get("formats", []))
-            max_h = max(heights) if heights else None
+            # Reuse the probe's format scan when it's for this exact URL — avoids a
+            # second extract_info round-trip (quicker start, less rate-limiting).
+            probe = self._probe
+            if probe and probe.get("url") == url:
+                max_h = probe.get("max_h")
+                has_audio = probe.get("has_audio", False)
+                title = (probe.get("title") or "unknown")[:70]
+            else:
+                self.after(0, self._set_status, "fetching stream…", NEON)
+                with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True,
+                                       "skip_download": True, "noplaylist": True}) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                heights = [f["height"] for f in info.get("formats", [])
+                           if f.get("vcodec") not in (None, "none") and f.get("height")]
+                has_audio = any(f.get("acodec") not in (None, "none") for f in info.get("formats", []))
+                max_h = max(heights) if heights else None
+                title = (info.get("title") or "unknown")[:70]
             quality = self._choose_quality(auto, max_h, has_audio)
-            title = (info.get("title") or "unknown")[:70]
             self.after(0, self._set_status, f"snatching: {title}", NEON)
             opts = self._build_opts(out_dir, ffmpeg, quality)
             with yt_dlp.YoutubeDL(opts) as ydl:
